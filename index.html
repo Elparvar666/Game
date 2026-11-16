@@ -671,7 +671,37 @@
     let bgScrollX = 0;
     let floorScrollX = 0;
 
-    let killerCooldown = 0;
+    // --- מעקב אחרי אבני דרך של 666 וסימנים על הדלתות ---
+    let milestone666Level = 0;
+    const DOOR_SIGN_METERS = [666, 1666, 2666, 3666, 4666, 5666, 6666, 7666, 8666, 9666, 10666];
+    let triggeredDoorSigns = new Set();
+    let doorSignTimer = 0; // 300 פריימים = 5 שניות
+
+    const WEIRD_LATIN_POOL = [
+      'ÆØÞÐ', 'ΨΩΣΔ', 'ЖЯЮФ', 'ĦŁŊŦ', 'ꜲꜴꝎ', '‡†§¶', 'ΞΦΠΛ', 'ƵɃɆɌ', 'ѴѾѢѲ', 'ⱤɆĐɆ'
+    ];
+
+    function pickRandomDoorSymbol() {
+      const types = ['PENTAGRAM', '666', '404', 'WEIRD_LATIN', 'ILLUMINATI', 'RUN', 'WAKE_UP'];
+      const type = types[Math.floor(Math.random() * types.length)];
+      let text = '';
+      if (type === '666') text = '666';
+      else if (type === '404') text = '404';
+      else if (type === 'RUN') text = 'RUN';
+      else if (type === 'WAKE_UP') text = 'WAKE UP';
+      else if (type === 'WEIRD_LATIN') {
+        text = WEIRD_LATIN_POOL[Math.floor(Math.random() * WEIRD_LATIN_POOL.length)];
+      }
+      return {
+        type,
+        text,
+        offsetX: (Math.random() - 0.5) * 14,
+        offsetY: 32 + Math.random() * 58,
+        rotation: (Math.random() - 0.5) * 0.25,
+        color: Math.random() < 0.65 ? '#ff1e38' : '#e6d4ff',
+        changeCooldown: 12 + Math.floor(Math.random() * 24)
+      };
+    }
 
     function enterFullScreen() {
       const elem = document.documentElement;
@@ -725,9 +755,9 @@
     const sprSparkle = loadImg('sparkle.png');
 
     let hallwayDoors = [
-      { x: 180, label: 'ג\'3' },
-      { x: 520, label: 'מחסן' },
-      { x: 860, label: 'סגורה' }
+      { x: 180, label: 'ג\'3', sign: pickRandomDoorSymbol() },
+      { x: 520, label: 'מחסן', sign: pickRandomDoorSymbol() },
+      { x: 860, label: 'סגורה', sign: pickRandomDoorSymbol() }
     ];
 
     let ceilingLights = [
@@ -899,17 +929,39 @@
 
     let entities = [];
 
-    function spawnEntity() {
-      if (entities.length > 0) {
-        const lastEnt = entities[entities.length - 1];
-        if (lastEnt.x > BASE_W - 140) return;
+    // חישוב המרווח המינימלי הבטוח בין רוצח אחד להבא כדי שתמיד יהיה סיכוי לנחות ולקפוץ שוב
+    function getSafeRhythmGap(speed) {
+      // הערכת זמן אוויר של קפיצה לפי מצב הסטלה הנוכחי
+      const approxVy = stonedLevel >= 100 ? 7.8 : (stonedLevel >= 75 ? 10.5 : 12.2);
+      const airFrames = (2 * approxVy) / GRAVITY;
+      // המרחק שהקרקע עוברת בזמן קפיצה מלאה + מרווח נחיתה וניתור מחדש (כ-65 פיקסלים)
+      return Math.ceil(speed * airFrames + 65);
+    }
+
+    function spawnEntity(currentSpeed) {
+      const lastEnt = entities.length > 0 ? entities[entities.length - 1] : null;
+      const lastIsKiller = lastEnt && lastEnt.type === 'HEADLESS_KILLER';
+
+      // מרווח בסיסי בין פריטים רגילים
+      const distanceFactor = Math.min(1, score / 4000);
+      const standardMinGap = Math.max(85, 140 - distanceFactor * 40 - milestone666Level * 4);
+
+      // אם הישות האחרונה היא רוצח, מוודאים שלא ייווצר "אזור מוות" בלתי עביר
+      if (lastEnt) {
+        const distFromLast = (BASE_W + 20) - lastEnt.x;
+        const requiredGap = lastIsKiller ? getSafeRhythmGap(currentSpeed) : standardMinGap;
+        if (distFromLast < requiredGap) return;
       }
 
-      if (killerCooldown > 0) killerCooldown--;
+      // עלייה בהסתברות להופעת וויד וסרוקוול ככל שהמרחק עולה + תוספת בכל 666 מטר
+      const bonusCollectibleProb = Math.min(0.24, (score / 5000) * 0.18 + milestone666Level * 0.015);
+      const seroquelThreshold = 0.30 + bonusCollectibleProb * 0.55;
+      const weedThreshold = seroquelThreshold + 0.25 + bonusCollectibleProb * 0.45;
+      const wizardThreshold = Math.min(0.86, weedThreshold + 0.10 + milestone666Level * 0.005);
 
       const rand = Math.random();
 
-      if (rand < 0.30) {
+      if (rand < seroquelThreshold) {
         entities.push({
           type: 'SEROQUEL',
           x: BASE_W + 20,
@@ -920,7 +972,7 @@
           animSpeed: 8
         });
       } 
-      else if (rand < 0.55) {
+      else if (rand < weedThreshold) {
         entities.push({
           type: 'WEED',
           x: BASE_W + 20,
@@ -931,7 +983,7 @@
           animSpeed: 8
         });
       } 
-      else if (rand < 0.65) {
+      else if (rand < wizardThreshold) {
         entities.push({
           type: 'WIZARD',
           x: BASE_W + 20,
@@ -942,21 +994,60 @@
           animSpeed: 7
         });
       } 
-      else if (killerCooldown === 0) {
+      else {
         const isBig = paranoia > 60;
         const eWidth = isBig ? 52 : 36;
         const eHeight = isBig ? 72 : 54;
+        const firstX = BASE_W + 20;
+
         entities.push({
           type: 'HEADLESS_KILLER',
           isBig: isBig,
-          x: BASE_W + 20,
+          x: firstX,
           y: GROUND_Y - eHeight,
           width: eWidth,
           height: eHeight,
           frames: 5,
           animSpeed: 6
         });
-        killerCooldown = 1;
+
+        // ככל שמתקדמים במרחק ובמדרגות ה-666, עולה הסיכוי לתבנית מאתגרת אך עבירה מתמטית:
+        // 1) צמד רוצחים צמודים שאפשר לעבור בקפיצה אחת מדויקת
+        // 2) או רצף של 2–3 רוצחים במרווחי קפיצה מהירים ומדויקים
+        const multiChance = Math.min(0.65, 0.15 + (score / 4500) * 0.35 + milestone666Level * 0.05);
+        if (Math.random() < multiChance) {
+          const isTightPair = !isBig && currentSpeed >= 4.0 && Math.random() < 0.45;
+
+          if (isTightPair) {
+            // צמוד מספיק (רק 32px רווח נטו) כדי שקשת קפיצה אחת תעבור מעל שניהם יחד
+            entities.push({
+              type: 'HEADLESS_KILLER',
+              isBig: false,
+              x: firstX + eWidth - 4,
+              y: GROUND_Y - eHeight,
+              width: eWidth,
+              height: eHeight,
+              frames: 5,
+              animSpeed: 6
+            });
+          } else {
+            // רצף של 2 או 3 רוצחים במרווחי קפיצה-נחיתה-קפיצה מהירים ומדויקים
+            const chainCount = (milestone666Level >= 2 && Math.random() < 0.35) ? 3 : 2;
+            const rhythmStep = getSafeRhythmGap(currentSpeed);
+            for (let c = 1; c < chainCount; c++) {
+              entities.push({
+                type: 'HEADLESS_KILLER',
+                isBig: isBig,
+                x: firstX + rhythmStep * c,
+                y: GROUND_Y - eHeight,
+                width: eWidth,
+                height: eHeight,
+                frames: 5,
+                animSpeed: 6
+              });
+            }
+          }
+        }
       }
     }
 
@@ -983,6 +1074,76 @@
         pTop < eBottom &&
         pBottom > eTop
       );
+    }
+
+    // ציור הסימנים המשונים על הדלתות (פנטגרם, אילומינטי, 666, 404, RUN, WAKE UP, לטינית מוזרה)
+    function drawDoorCreepySign(door, doorW, doorY) {
+      if (!door.sign) door.sign = pickRandomDoorSymbol();
+
+      // החלפה אקראית של הסימן במרחב של הדלת לאורך 5 השניות
+      door.sign.changeCooldown--;
+      if (door.sign.changeCooldown <= 0) {
+        door.sign = pickRandomDoorSymbol();
+      }
+
+      const s = door.sign;
+      const cx = door.x + doorW / 2 + s.offsetX;
+      const cy = doorY + s.offsetY;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(s.rotation);
+
+      // הבהוב קל של ההזיה
+      const flickerAlpha = 0.72 + Math.sin(frame * 0.45 + door.x) * 0.25;
+      ctx.globalAlpha = Math.max(0.35, Math.min(1, flickerAlpha));
+      ctx.strokeStyle = s.color;
+      ctx.fillStyle = s.color;
+      ctx.shadowColor = s.color;
+      ctx.shadowBlur = 6;
+      ctx.lineWidth = 1.6;
+
+      if (s.type === 'PENTAGRAM') {
+        const r = 14;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        for (let k = 0; k < 5; k++) {
+          const idx = (k * 2) % 5;
+          const angle = -Math.PI / 2 + (idx * 2 * Math.PI) / 5;
+          const px = Math.cos(angle) * r;
+          const py = Math.sin(angle) * r;
+          if (k === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      } else if (s.type === 'ILLUMINATI') {
+        // פירמידה עם עין במרכז
+        ctx.beginPath();
+        ctx.moveTo(0, -14);
+        ctx.lineTo(15, 11);
+        ctx.lineTo(-15, 11);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.ellipse(0, 2, 6, 3.5, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(0, 2, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.font = s.type === 'WAKE_UP' ? 'bold 10px "Courier New", monospace' : 'bold 13px "Courier New", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(s.text, 0, 0);
+      }
+
+      ctx.restore();
     }
 
     function drawHallway(speed) {
@@ -1014,13 +1175,21 @@
       for (let i = 0; i < hallwayDoors.length; i++) {
         const door = hallwayDoors[i];
         door.x -= speed * 0.7;
-        if (door.x < -doorW - 20) door.x = BASE_W + 300;
+        if (door.x < -doorW - 20) {
+          door.x = BASE_W + 300;
+          door.sign = pickRandomDoorSymbol();
+        }
 
         if (sprDoor.isLoaded()) {
           ctx.drawImage(sprDoor.img, door.x, doorY, doorW, doorH);
         } else {
           ctx.fillStyle = '#1a2121';
           ctx.fillRect(door.x, doorY, doorW, doorH);
+        }
+
+        // ציור הסימנים המשונים על הדלתות למשך 5 שניות במטרים המוגדרים
+        if (doorSignTimer > 0) {
+          drawDoorCreepySign(door, doorW, doorY);
         }
       }
 
@@ -1031,7 +1200,7 @@
       const lightH = 16;
       const lightY = CEILING_Y - 14;
 
-      const flickerRateMultiplier = 0.04 + (paranoia / 100) * 0.35;
+      const flickerRateMultiplier = 0.04 + (paranoia / 100) * 0.35 + milestone666Level * 0.03;
 
       for (let i = 0; i < ceilingLights.length; i++) {
         const cl = ceilingLights[i];
@@ -1039,7 +1208,8 @@
         if (cl.x < -lightW - 20) cl.x = BASE_W + 180;
 
         const isFlickering = (Math.sin((frame * flickerRateMultiplier) + cl.flickerSeed) > 0.45 && Math.random() < 0.65)
-                             || (paranoia >= 80 && Math.random() < 0.25);
+                             || (paranoia >= 80 && Math.random() < 0.25)
+                             || (doorSignTimer > 0 && Math.random() < 0.35);
         const lightFrame = isFlickering ? 1 : 0;
 
         if (sprLight.isLoaded()) {
@@ -1084,11 +1254,12 @@
     }
 
     function drawParanoiaEyes() {
-      if (paranoia < 35) return;
+      if (paranoia < 35 && doorSignTimer <= 0) return;
 
+      const effectiveParanoia = doorSignTimer > 0 ? Math.max(paranoia, 65) : paranoia;
       const visibleCount = Math.min(
         backgroundEyes.length,
-        Math.floor(((paranoia - 35) / 65) * backgroundEyes.length) + 1
+        Math.floor(((effectiveParanoia - 35) / 65) * backgroundEyes.length) + 1
       );
 
       const playerCenterX = player.x + player.width / 2;
@@ -1178,7 +1349,10 @@
       stonedLevel = 0;
       screenShake = 0;
       baseSpeed = 4.2;
-      killerCooldown = 0;
+      milestone666Level = 0;
+      triggeredDoorSigns.clear();
+      doorSignTimer = 0;
+
       player.revertFromTeapot();
       player.revertFromMetatron();
       player.y = GROUND_Y - player.height;
@@ -1287,11 +1461,43 @@
       updateAudioCrossfade();
 
       const speedSlowdown = (stonedLevel / 100) * 1.8;
-      const currentSpeed = Math.max(2.2, baseSpeed - speedSlowdown + (paranoia / 40));
+      // בכל מדרגת 666 מטר הקצב עולה מעט ויותר דברים קורים
+      const milestoneSpeedBoost = milestone666Level * 0.16;
+      const currentSpeed = Math.max(2.2, baseSpeed + milestoneSpeedBoost - speedSlowdown + (paranoia / 40));
       score += 0.08 * currentSpeed;
 
-      if (frame % Math.max(50, Math.floor(115 - currentSpeed * 4)) === 0) {
-        spawnEntity();
+      const currentMeters = Math.floor(score);
+
+      // עדכון רמת ה-666 (כל 666 מטר יותר דברים קורים)
+      const newMilestoneLevel = Math.floor(currentMeters / 666);
+      if (newMilestoneLevel > milestone666Level) {
+        milestone666Level = newMilestoneLevel;
+        screenShake = 6;
+      }
+
+      // הפעלת סימנים על הדלתות למשך 5 שניות (300 פריימים) בנקודות הציון הספציפיות
+      for (const targetM of DOOR_SIGN_METERS) {
+        if (currentMeters >= targetM && !triggeredDoorSigns.has(targetM)) {
+          triggeredDoorSigns.add(targetM);
+          doorSignTimer = 300;
+          for (const d of hallwayDoors) {
+            d.sign = pickRandomDoorSymbol();
+          }
+          break;
+        }
+      }
+
+      if (doorSignTimer > 0) {
+        doorSignTimer--;
+      }
+
+      // קצב זימון עצמים גובר ככל שהמרחק גדל ובכל כפולה של 666 מטר
+      const distanceSpawnBonus = Math.floor(score / 220);
+      const milestoneSpawnBonus = milestone666Level * 6;
+      const spawnInterval = Math.max(24, Math.floor(110 - currentSpeed * 4 - distanceSpawnBonus - milestoneSpawnBonus));
+
+      if (frame % spawnInterval === 0) {
+        spawnEntity(currentSpeed);
       }
 
       player.update();
@@ -1418,7 +1624,6 @@
 
       ctx.restore();
 
-      const currentMeters = Math.floor(score);
       const displayedRecord = Math.max(highScore, currentMeters);
       scoreReadout.innerText = `מרחק: ${currentMeters} מטרים | שיא: ${displayedRecord} מטרים`;
 
