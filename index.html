@@ -198,7 +198,7 @@
       transition: width 0.15s;
     }
 
-    /* --- מסך Game Over מעוצב עם פונטים מוגדלים --- */
+    /* --- מסך Game Over מעוצב (מובייל כברירת מחדל) --- */
     #game-over-screen {
       display: none;
       position: absolute;
@@ -352,6 +352,78 @@
       opacity: 0.9;
       margin-top: 3px;
       text-shadow: 1px 1px 0 #000;
+    }
+
+    /* --- התאמה למסכי מחשב (דסקטופ) --- */
+    @media (min-width: 950px) and (min-height: 550px) {
+      #game-over-screen {
+        background-size: 28vh auto;
+      }
+
+      .lost-avatar {
+        height: 68%;
+        left: 5%;
+      }
+
+      .game-over-content {
+        width: 60%;
+        right: 3%;
+        gap: 2.2vh;
+      }
+
+      .game-over-title {
+        font-size: 6.5vh;
+        text-shadow: 0 0 18px rgba(209, 181, 255, 0.8), 4px 4px 0 #180d28;
+      }
+
+      .game-over-sub {
+        font-size: 3.2vh;
+      }
+
+      .stats-block {
+        gap: 1.2vh;
+        margin: 1vh 0;
+      }
+
+      #current-run-distance {
+        font-size: 3vh;
+      }
+
+      .new-high-score-badge {
+        font-size: 3.5vh;
+      }
+
+      #previous-high-score {
+        font-size: 2.6vh;
+      }
+
+      .game-over-tip {
+        font-size: 2.4vh;
+        padding: 1.4vh 2.5vh;
+        border-width: 2px;
+      }
+
+      .cta-buttons-row {
+        gap: 2.5vh;
+        margin-top: 1vh;
+      }
+
+      .cta-album-btn,
+      .cta-tickets-btn {
+        font-size: 2.8vh;
+        padding: 1.5vh 3.5vh;
+        border-width: 3px;
+        box-shadow: 5px 5px 0 #000;
+      }
+
+      .cta-tickets-btn {
+        box-shadow: 5px 5px 0 #000, 0 0 16px rgba(57, 255, 20, 0.6);
+      }
+
+      .restart-prompt {
+        font-size: 2.3vh;
+        margin-top: 1vh;
+      }
     }
 
     /* --- מסך השהיה --- */
