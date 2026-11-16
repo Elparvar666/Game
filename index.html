@@ -198,6 +198,20 @@
       transition: width 0.15s;
     }
 
+    #teapot-timer {
+      font-size: 9px;
+      color: #ffaa00;
+      display: none;
+    }
+
+    #metatron-timer {
+      font-size: 10px;
+      color: #ffd700;
+      font-weight: 900;
+      text-shadow: 0 0 8px #ff00ff;
+      display: none;
+    }
+
     /* --- מסך Game Over מעוצב (מובייל כברירת מחדל) --- */
     #game-over-screen {
       display: none;
@@ -356,6 +370,49 @@
 
     /* --- התאמה למסכי מחשב (דסקטופ) --- */
     @media (min-width: 950px) and (min-height: 550px) {
+      /* הגדלת HUD ומדדים בתוך המשחק */
+      .hud {
+        top: 2.5vh;
+        right: 2.2vh;
+        left: 2.2vh;
+        font-size: 2.3vh;
+      }
+
+      .hud-left {
+        gap: 1.5vh;
+      }
+
+      .hud-btn {
+        width: 4.8vh;
+        height: 4.8vh;
+        font-size: 2.5vh;
+        border-width: 2px;
+      }
+
+      .status-bars {
+        gap: 0.8vh;
+      }
+
+      .bar-row {
+        gap: 1.2vh;
+        font-size: 2vh;
+      }
+
+      .bar-wrap {
+        width: 15vh;
+        height: 1.4vh;
+        border-width: 2px;
+      }
+
+      #teapot-timer {
+        font-size: 1.8vh;
+      }
+
+      #metatron-timer {
+        font-size: 2vh;
+      }
+
+      /* הגדלת מסך Game Over */
       #game-over-screen {
         background-size: 28vh auto;
       }
@@ -530,8 +587,8 @@
           <span style="color: #2ecc71;">סטלה:</span>
           <div class="bar-wrap"><div id="stoned-bar"></div></div>
         </div>
-        <div id="teapot-timer" style="font-size: 9px; color: #ffaa00; display: none;">מצב קומקום! 🫖</div>
-        <div id="metatron-timer" style="font-size: 10px; color: #ffd700; font-weight: 900; text-shadow: 0 0 8px #ff00ff; display: none;">מצב מטטרון! ⚡</div>
+        <div id="teapot-timer">מצב קומקום! 🫖</div>
+        <div id="metatron-timer">מצב מטטרון! ⚡</div>
       </div>
     </div>
 
