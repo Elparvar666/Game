@@ -795,6 +795,14 @@
       jump() {
         if (!this.isGrounded) return;
 
+        // במצב קומקום + סטלה: כמה שיותר מסטול = קופץ יותר גבוה מהרגיל!
+        if (this.isTeapot) {
+          const stonedBoost = (stonedLevel / 100) * 4.0; // מ-13.4 ב-0% סטלה ועד -17.4 ב-100% סטלה
+          this.vy = -(13.4 + stonedBoost);
+          this.isGrounded = false;
+          return;
+        }
+
         if (stonedLevel >= 100) {
           this.vy = -7.8;
         } else if (stonedLevel >= 75) {
@@ -810,18 +818,34 @@
 
       morphToTeapot() {
         this.revertFromMetatron();
+        const wasOnGround = this.isGrounded;
+        const oldBottom = this.y + this.height;
+
         this.isTeapot = true;
         this.teapotTimer = 360;
         this.width = 36;
         this.height = 27;
-        this.y = GROUND_Y - this.height;
+
+        if (wasOnGround) {
+          this.y = GROUND_Y - this.height;
+        } else {
+          this.y = Math.min(GROUND_Y - this.height, oldBottom - this.height);
+        }
       },
 
       revertFromTeapot() {
+        const wasOnGround = this.isGrounded;
+        const oldBottom = this.y + this.height;
+
         this.isTeapot = false;
         this.width = 36;
         this.height = 54;
-        this.y = GROUND_Y - this.height;
+
+        if (wasOnGround) {
+          this.y = GROUND_Y - this.height;
+        } else {
+          this.y = Math.min(GROUND_Y - this.height, oldBottom - this.height);
+        }
       },
 
       activateMetatron() {
@@ -838,6 +862,12 @@
       update() {
         this.vy += GRAVITY;
         this.y += this.vy;
+
+        // מניעת התנגשות בתקרה בקפיצות הגבוהות של קומקום מסטול
+        if (this.y < CEILING_Y + 4) {
+          this.y = CEILING_Y + 4;
+          if (this.vy < 0) this.vy = 0;
+        }
 
         const currentHeight = this.isTeapot ? 27 : 54;
         if (this.y >= GROUND_Y - currentHeight) {
@@ -891,19 +921,30 @@
         }
 
         if (this.isTeapot) {
+          // שקשוק רותח ימינה ושמאלה בזמן קפיצה בסטלה
+          const isBoilingJump = !this.isGrounded && stonedLevel > 0;
+          const boilIntensity = isBoilingJump ? (0.35 + (stonedLevel / 100) * 0.65) : 0;
+          const shakeX = isBoilingJump ? Math.sin(frame * 1.45) * 3.2 * boilIntensity : 0;
+          const tiltAngle = isBoilingJump ? Math.sin(frame * 1.1) * 0.16 * boilIntensity : 0;
+
+          ctx.save();
+          ctx.translate(this.x + this.width / 2 + shakeX, this.y + this.height / 2);
+          if (tiltAngle !== 0) ctx.rotate(tiltAngle);
+
           if (sprTeapot.isLoaded()) {
             const frameIndex = Math.floor(frame / 6) % this.totalTeapotFrames;
             ctx.drawImage(
               sprTeapot.img,
               frameIndex * 32, 0, 32, 24,
-              this.x, this.y, this.width, this.height
+              -this.width / 2, -this.height / 2, this.width, this.height
             );
           } else {
             ctx.fillStyle = '#c0392b';
-            ctx.fillRect(this.x, this.y + 4, this.width, this.height - 4);
+            ctx.fillRect(-this.width / 2, -this.height / 2 + 4, this.width, this.height - 4);
             ctx.fillStyle = '#e74c3c';
-            ctx.fillRect(this.x + 8, this.y, 16, 4);
+            ctx.fillRect(-this.width / 2 + 8, -this.height / 2, 16, 4);
           }
+          ctx.restore();
         } else {
           if (!this.isGrounded && sprPlayerJump.isLoaded()) {
             const jumpFrame = this.vy < 0 ? 0 : 1;
@@ -931,25 +972,28 @@
 
     // חישוב המרווח המינימלי הבטוח בין רוצח אחד להבא כדי שתמיד יהיה סיכוי לנחות ולקפוץ שוב
     function getSafeRhythmGap(speed) {
-      // הערכת זמן אוויר של קפיצה לפי מצב הסטלה הנוכחי
-      const approxVy = stonedLevel >= 100 ? 7.8 : (stonedLevel >= 75 ? 10.5 : 12.2);
+      let approxVy;
+      if (player.isTeapot) {
+        approxVy = 13.4 + (stonedLevel / 100) * 4.0;
+      } else {
+        approxVy = stonedLevel >= 100 ? 7.8 : (stonedLevel >= 75 ? 10.5 : 12.2);
+      }
       const airFrames = (2 * approxVy) / GRAVITY;
-      // המרחק שהקרקע עוברת בזמן קפיצה מלאה + מרווח נחיתה וניתור מחדש (כ-65 פיקסלים)
       return Math.ceil(speed * airFrames + 65);
     }
 
     function spawnEntity(currentSpeed) {
       const lastEnt = entities.length > 0 ? entities[entities.length - 1] : null;
       const lastIsKiller = lastEnt && lastEnt.type === 'HEADLESS_KILLER';
+      const lastIsWizard = lastEnt && lastEnt.type === 'WIZARD';
 
       // מרווח בסיסי בין פריטים רגילים
       const distanceFactor = Math.min(1, score / 4000);
       const standardMinGap = Math.max(85, 140 - distanceFactor * 40 - milestone666Level * 4);
 
-      // אם הישות האחרונה היא רוצח, מוודאים שלא ייווצר "אזור מוות" בלתי עביר
       if (lastEnt) {
         const distFromLast = (BASE_W + 20) - lastEnt.x;
-        const requiredGap = lastIsKiller ? getSafeRhythmGap(currentSpeed) : standardMinGap;
+        const requiredGap = (lastIsKiller || lastIsWizard) ? getSafeRhythmGap(currentSpeed) : standardMinGap;
         if (distFromLast < requiredGap) return;
       }
 
@@ -995,7 +1039,7 @@
         });
       } 
       else {
-        const isBig = paranoia > 60;
+        const isBig = !player.isTeapot && paranoia > 60;
         const eWidth = isBig ? 52 : 36;
         const eHeight = isBig ? 72 : 54;
         const firstX = BASE_W + 20;
@@ -1011,15 +1055,11 @@
           animSpeed: 6
         });
 
-        // ככל שמתקדמים במרחק ובמדרגות ה-666, עולה הסיכוי לתבנית מאתגרת אך עבירה מתמטית:
-        // 1) צמד רוצחים צמודים שאפשר לעבור בקפיצה אחת מדויקת
-        // 2) או רצף של 2–3 רוצחים במרווחי קפיצה מהירים ומדויקים
         const multiChance = Math.min(0.65, 0.15 + (score / 4500) * 0.35 + milestone666Level * 0.05);
         if (Math.random() < multiChance) {
           const isTightPair = !isBig && currentSpeed >= 4.0 && Math.random() < 0.45;
 
           if (isTightPair) {
-            // צמוד מספיק (רק 32px רווח נטו) כדי שקשת קפיצה אחת תעבור מעל שניהם יחד
             entities.push({
               type: 'HEADLESS_KILLER',
               isBig: false,
@@ -1031,7 +1071,6 @@
               animSpeed: 6
             });
           } else {
-            // רצף של 2 או 3 רוצחים במרווחי קפיצה-נחיתה-קפיצה מהירים ומדויקים
             const chainCount = (milestone666Level >= 2 && Math.random() < 0.35) ? 3 : 2;
             const rhythmStep = getSafeRhythmGap(currentSpeed);
             for (let c = 1; c < chainCount; c++) {
@@ -1054,14 +1093,18 @@
     function checkCollision(p, e) {
       if (e.isFlyingAway) return false;
 
-      const pLeft = p.x + 5;
-      const pRight = p.x + p.width - 5;
-      const pTop = p.y + 5;
-      const pBottom = p.y + p.height - 2;
+      const pSidePad = p.isTeapot ? 8 : 5;
+      const pTopPad = p.isTeapot ? 7 : 5;
+      const pBottomPad = p.isTeapot ? 3 : 2;
+
+      const pLeft = p.x + pSidePad;
+      const pRight = p.x + p.width - pSidePad;
+      const pTop = p.y + pTopPad;
+      const pBottom = p.y + p.height - pBottomPad;
 
       const isKiller = e.type === 'HEADLESS_KILLER';
       const topPadding = isKiller ? (e.isBig ? 16 : 12) : 2;
-      const sidePadding = isKiller ? 7 : 2;
+      const sidePadding = isKiller ? 8 : 2;
 
       const eLeft = e.x + sidePadding;
       const eRight = e.x + e.width - sidePadding;
@@ -1080,7 +1123,6 @@
     function drawDoorCreepySign(door, doorW, doorY) {
       if (!door.sign) door.sign = pickRandomDoorSymbol();
 
-      // החלפה אקראית של הסימן במרחב של הדלת לאורך 5 השניות
       door.sign.changeCooldown--;
       if (door.sign.changeCooldown <= 0) {
         door.sign = pickRandomDoorSymbol();
@@ -1094,7 +1136,6 @@
       ctx.translate(cx, cy);
       ctx.rotate(s.rotation);
 
-      // הבהוב קל של ההזיה
       const flickerAlpha = 0.72 + Math.sin(frame * 0.45 + door.x) * 0.25;
       ctx.globalAlpha = Math.max(0.35, Math.min(1, flickerAlpha));
       ctx.strokeStyle = s.color;
@@ -1121,7 +1162,6 @@
         ctx.closePath();
         ctx.stroke();
       } else if (s.type === 'ILLUMINATI') {
-        // פירמידה עם עין במרכז
         ctx.beginPath();
         ctx.moveTo(0, -14);
         ctx.lineTo(15, 11);
@@ -1187,7 +1227,6 @@
           ctx.fillRect(door.x, doorY, doorW, doorH);
         }
 
-        // ציור הסימנים המשונים על הדלתות למשך 5 שניות במטרים המוגדרים
         if (doorSignTimer > 0) {
           drawDoorCreepySign(door, doorW, doorY);
         }
@@ -1353,10 +1392,14 @@
       triggeredDoorSigns.clear();
       doorSignTimer = 0;
 
-      player.revertFromTeapot();
-      player.revertFromMetatron();
+      player.isTeapot = false;
+      player.isMetatron = false;
+      player.width = 36;
+      player.height = 54;
       player.y = GROUND_Y - player.height;
       player.vy = 0;
+      player.isGrounded = true;
+
       gameState = 'PLAYING';
       gameOverScreen.style.display = 'none';
       pauseScreen.style.display = 'none';
@@ -1388,7 +1431,6 @@
         previousHighScore.innerText = `שיא קודם: ${prevRecord} מטרים`;
       }
 
-      // בחירת טיפ רנדומלי למסך הפסילה
       const randomTip = gameTips[Math.floor(Math.random() * gameTips.length)];
       didYouKnowTip.innerHTML = `<strong>טיפ:</strong> ${randomTip}`;
 
@@ -1461,21 +1503,18 @@
       updateAudioCrossfade();
 
       const speedSlowdown = (stonedLevel / 100) * 1.8;
-      // בכל מדרגת 666 מטר הקצב עולה מעט ויותר דברים קורים
       const milestoneSpeedBoost = milestone666Level * 0.16;
       const currentSpeed = Math.max(2.2, baseSpeed + milestoneSpeedBoost - speedSlowdown + (paranoia / 40));
       score += 0.08 * currentSpeed;
 
       const currentMeters = Math.floor(score);
 
-      // עדכון רמת ה-666 (כל 666 מטר יותר דברים קורים)
       const newMilestoneLevel = Math.floor(currentMeters / 666);
       if (newMilestoneLevel > milestone666Level) {
         milestone666Level = newMilestoneLevel;
         screenShake = 6;
       }
 
-      // הפעלת סימנים על הדלתות למשך 5 שניות (300 פריימים) בנקודות הציון הספציפיות
       for (const targetM of DOOR_SIGN_METERS) {
         if (currentMeters >= targetM && !triggeredDoorSigns.has(targetM)) {
           triggeredDoorSigns.add(targetM);
@@ -1491,7 +1530,6 @@
         doorSignTimer--;
       }
 
-      // קצב זימון עצמים גובר ככל שהמרחק גדל ובכל כפולה של 666 מטר
       const distanceSpawnBonus = Math.floor(score / 220);
       const milestoneSpawnBonus = milestone666Level * 6;
       const spawnInterval = Math.max(24, Math.floor(110 - currentSpeed * 4 - distanceSpawnBonus - milestoneSpawnBonus));
